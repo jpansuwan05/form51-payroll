@@ -6,6 +6,7 @@ import json
 import base64
 from streamlit_local_storage import LocalStorage
 import streamlit.components.v1 as components
+import openpyxl
 
 st.set_page_config(page_title="ระบบสรุปยอดทำงานลูกจ้าง (แบบ 51)", layout="wide")
 
@@ -35,7 +36,7 @@ shift_codes = ["", "/", "พ", "ป", "น", "ย", "2น", "2ย"]
 st.title("📝 ระบบสรุปยอดทำงานและวันหยุดลูกจ้าง (Export แบบ 51)")
 
 # ==========================================
-# 3. ตั้งค่าข้อมูลการเบิกเงินและฐานข้อมูล
+# 3. ตั้งค่าข้อมูลส่วนกลาง (รอบเดือน & ตัวแปร)
 # ==========================================
 with st.container(border=True):
     st.subheader("⚙️ 1. ตั้งค่าข้อมูลส่วนกลาง")
@@ -49,7 +50,6 @@ with st.container(border=True):
     with c3:
         uploaded_db = st.file_uploader("📂 อัปโหลดไฟล์ Excel ฐานข้อมูลพนักงาน", type=["xlsx"])
         
-    # ลอจิกหาข้อมูลเดือนก่อนหน้า และจำนวนวัน
     target_month_idx = months_list.index(target_month_name) + 1
     if target_month_idx == 1:
         prev_month_idx = 12
@@ -64,7 +64,6 @@ with st.container(border=True):
     st.markdown("---")
     st.markdown("##### 📝 ข้อมูลสัญญาจ้าง (โปรแกรมจะนำไปแทนที่ตัวแปรในฟอร์ม)")
     
-    # เพิ่มกล่องข้อความให้กรอกข้อมูลสัญญาจ้างแบบครบถ้วนตามที่คุณต้องการ
     col_contract, col_date1 = st.columns(2)
     with col_contract:
         contract_no = st.text_input("เลขที่สัญญา/คำสั่ง [CONTRACT]", value="")
@@ -78,10 +77,17 @@ with st.container(border=True):
         edate_contract = st.text_input("วันสิ้นสุดสัญญา [EDATE_CONTRACT]", value="")
 
 # ==========================================
-# 4. เตรียมคอลัมน์ตาราง 46 วัน
+# 4. เตรียมคอลัมน์ตารางหน้าเว็บ
 # ==========================================
-config = {"ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium")}
-columns_list = ["ชื่อ-สกุล"]
+# เพิ่ม 2 คอลัมน์ใหม่ เข้ามาจัดการใน UI ด้วย
+config = {
+    "ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium"),
+    "เลขประจำตัว": st.column_config.TextColumn("เลขประจำตัว", width="small"),
+    "อัตราวันละ": st.column_config.NumberColumn("อัตราวันละ", width="small")
+}
+
+# เอา 2 คอลัมน์ใหม่มาแทรกไว้หน้าสุด
+columns_list = ["ชื่อ-สกุล", "เลขประจำตัว", "อัตราวันละ"]
 
 prev_cols = [f"P{d}" for d in range(1, num_days_prev + 1)]
 for d, col in enumerate(prev_cols, 1):
@@ -107,19 +113,36 @@ if 'form51_data' not in st.session_state:
     else:
         st.session_state.form51_data = pd.DataFrame(columns=columns_list)
 
+# 🔄 อัปเดตลอจิกการดูดไฟล์: ให้หาคอลัมน์เลขประจำตัวและอัตราค่าจ้างด้วย
 if uploaded_db is not None:
     try:
         df_db = pd.read_excel(uploaded_db, sheet_name=0)
+        
+        # หาคอลัมน์ชื่อ
         name_col = next((col for col in ["รายชื่อ", "ชื่อ-สกุล", "ชื่อ-นามสกุล", "ชื่อ"] if col in df_db.columns), None)
+        # หาคอลัมน์เลขประจำตัว
+        id_col = next((col for col in ["เลขประจำตัว", "รหัสพนักงาน", "ID"] if col in df_db.columns), None)
+        # หาคอลัมน์อัตราค่าจ้าง
+        rate_col = next((col for col in ["อัตราวันละ", "ค่าแรง", "ค่าจ้าง", "อัตรา"] if col in df_db.columns), None)
         
         if name_col:
-            names = df_db[name_col].dropna().astype(str).tolist()
             new_df = pd.DataFrame(columns=columns_list)
-            new_df["ชื่อ-สกุล"] = names
+            new_df["ชื่อ-สกุล"] = df_db[name_col].astype(str)
+            
+            # ถ้ามีข้อมูลเลขประจำตัว ให้ดึงมา
+            if id_col:
+                new_df["เลขประจำตัว"] = df_db[id_col].astype(str)
+            # ถ้ามีข้อมูลอัตราค่าจ้าง ให้ดึงมา
+            if rate_col:
+                new_df["อัตราวันละ"] = pd.to_numeric(df_db[rate_col], errors='coerce')
+
             new_df = new_df.fillna("")
+            # เคลียร์ข้อมูล Not a Number (nan) จาก pandas
+            new_df = new_df.replace("nan", "") 
+            
             st.session_state.form51_data = new_df
             save_roster_to_local(new_df)
-            st.success("✅ โหลดรายชื่อจากไฟล์สำเร็จ! (บันทึกลง LocalStorage แล้ว)")
+            st.success("✅ โหลดรายชื่อ พร้อมเลขประจำตัวและอัตราค่าจ้างสำเร็จ!")
     except Exception as e:
         st.error(f"อ่านไฟล์ฐานข้อมูลไม่สำเร็จ: {e}")
 
@@ -142,7 +165,7 @@ with st.form("editor_form"):
         st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
 
 # ==========================================
-# 7. ระบบคำนวณและ Export หน้าละ 13 คน + ระบบตัวแปร
+# 7. ระบบคำนวณและ Export 
 # ==========================================
 st.markdown("---")
 if st.button("📊 คำนวณและส่งออกไฟล์ Excel (ฟอร์ม 51)", type="primary", use_container_width=True):
@@ -169,6 +192,12 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             name = str(row.get("ชื่อ-สกุล", "")).strip()
             if not name or name == "nan": continue
             
+            # เก็บค่าเลขประจำตัวและอัตรา ไว้โยนลง Excel
+            emp_id = str(row.get("เลขประจำตัว", "")).strip()
+            emp_rate = str(row.get("อัตราวันละ", "")).strip()
+            if emp_id == "nan": emp_id = ""
+            if emp_rate == "nan": emp_rate = ""
+            
             curr_1_15_raw = [str(row.get(c, "")).strip() for c in curr_cols]
             prev_1_15_raw = [str(row.get(prev_cols[i], "")).strip() for i in range(0, 15)]
             prev_16_end_raw = [str(row.get(prev_cols[i], "")).strip() for i in range(15, num_days_prev)]
@@ -183,7 +212,13 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             count_vac = working_range.count("พ")
             count_sick = working_range.count("ป")
             
-            row_work = {"ที่": len(work_data) + 1, "ชื่อ-นามสกุล": name}
+            row_work = {
+                "ที่": len(work_data) + 1, 
+                "ชื่อ-นามสกุล": name,
+                "เลขประจำตัว": emp_id,
+                "อัตราวันละ": emp_rate
+            }
+            
             for i in range(1, 16): row_work[str(i)] = work_curr_1_15[i-1]
             for i in range(16, num_days_prev + 1): row_work[str(i)] = work_prev_16_end[i-16]
             row_work["ปกติ"] = count_normal
@@ -204,7 +239,13 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             val_6 = count_2n * 1
             val_7 = count_2y * 2
             
-            row_holiday = {"ที่": len(holiday_data) + 1, "ชื่อ-นามสกุล": name}
+            row_holiday = {
+                "ที่": len(holiday_data) + 1, 
+                "ชื่อ-นามสกุล": name,
+                "เลขประจำตัว": emp_id,
+                "อัตราวันละ": emp_rate
+            }
+            
             for i in range(1, 16): row_holiday[str(i)] = holiday_prev_1_15[i-1]
             for i in range(16, num_days_prev + 1): row_holiday[str(i)] = holiday_prev_16_end[i-16]
             row_holiday["พรบ."] = val_6 + val_7
@@ -219,28 +260,24 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         # ==========================================
         # 🖨️ สร้างไฟล์ Excel ลงฟอร์มต้นแบบ
         # ==========================================
-        import openpyxl
-
         output = io.BytesIO()
         try:
             wb = openpyxl.load_workbook("template_51.xlsx")
-            ws_work_template = wb["ค่าทำงาน"]  
-            ws_holiday_template = wb["วันหยุด"] 
+            ws_work_template = wb["แบบค่าทำงาน"]  
+            ws_holiday_template = wb["แบบวันหยุด"] 
 
-            # ฟังก์ชันตัวแปรอัจฉริยะ ค้นหาและแทนที่ข้อความ
             def replace_tags_in_sheet(ws, page_num):
                 replacements = {
                     "[MONTH]": f"{target_month_name} {target_year_be}",
                     "[PMONTH]": str(prev_month_name),       
                     "[N]": str(num_days_prev),              
                     "[PAGE]": str(page_num),                
-                    "[CONTRACT]": str(contract_no),         # <-- เพิ่มบรรทัดนี้
+                    "[CONTRACT]": str(contract_no),
                     "[DATE_CONTRACT]": str(date_contract),
                     "[SDATE_CONTRACT]": str(sdate_contract),
                     "[EDATE_CONTRACT]": str(edate_contract)
                 }
                 
-                # กวาดหาพื้นที่ 60 บรรทัด 45 คอลัมน์ (ครอบคลุมทั้งหัวกระดาษและท้ายกระดาษ)
                 for r in range(1, 60):
                     for c in range(1, 45):
                         cell = ws.cell(row=r, column=c)
@@ -256,14 +293,16 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                 ws = wb.copy_worksheet(ws_work_template)
                 ws.title = f"ค่าทำงาน_หน้า{page_idx + 1}"
                 
-                # เปลี่ยนตัวแปร [ ] ในหน้านั้นๆ
                 replace_tags_in_sheet(ws, page_num=page_idx + 1)
                 
-                start_row = 6 # บรรทัดรายชื่อคนแรก
+                start_row = 6 
                 for i, person_data in enumerate(chunk):
                     current_row = start_row + i
+                    # 📌 หยอดข้อมูลพนักงาน
                     ws.cell(row=current_row, column=1).value = person_data["ที่"]
                     ws.cell(row=current_row, column=2).value = person_data["ชื่อ-นามสกุล"]
+                    ws.cell(row=current_row, column=3).value = person_data["เลขประจำตัว"] # คอลัมน์ C
+                    ws.cell(row=current_row, column=4).value = person_data["อัตราวันละ"]  # คอลัมน์ D
                     
                     for d in range(1, 32):
                         col_idx = 4 + d  
@@ -283,31 +322,31 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                 ws = wb.copy_worksheet(ws_holiday_template)
                 ws.title = f"วันหยุด_หน้า{page_idx + 1}"
                 
-                # เปลี่ยนตัวแปร [ ] ในหน้านั้นๆ
                 replace_tags_in_sheet(ws, page_num=page_idx + 1)
                 
                 start_row = 6 
                 for i, person_data in enumerate(chunk):
                     current_row = start_row + i
+                    # 📌 หยอดข้อมูลพนักงาน
                     ws.cell(row=current_row, column=1).value = person_data["ที่"]
                     ws.cell(row=current_row, column=2).value = person_data["ชื่อ-นามสกุล"]
+                    ws.cell(row=current_row, column=3).value = person_data["เลขประจำตัว"] # คอลัมน์ C
+                    ws.cell(row=current_row, column=4).value = person_data["อัตราวันละ"]  # คอลัมน์ D
                     
                     for d in range(1, 32):
                         col_idx = 4 + d 
                         ws.cell(row=current_row, column=col_idx).value = person_data.get(str(d), "")
                         
                     ws.cell(row=current_row, column=37).value = person_data["พรบ."] 
-                    
-                    # 🎯 แก้ไขพิกัดตรงนี้ให้ตรงกับ AQ และ AS ตามไฟล์ต้นฉบับ
-                    ws.cell(row=current_row, column=43).value = person_data[".6 (2/น)"] # ยิงเข้าคอลัมน์ AQ
-                    ws.cell(row=current_row, column=45).value = person_data[".7 (2/ย)"] # ยิงเข้าคอลัมน์ AS
+                    ws.cell(row=current_row, column=43).value = person_data[".6 (2/น)"] # คอลัมน์ AQ
+                    ws.cell(row=current_row, column=45).value = person_data[".7 (2/ย)"] # คอลัมน์ AS
 
             wb.remove(ws_work_template)
             wb.remove(ws_holiday_template)
             wb.save(output)
             output.seek(0)
             
-            st.success(f"✅ คำนวณและดึงฟอร์มเสร็จสมบูรณ์! แยกร่างและกระจายตัวแปรครบ {len(work_chunks)} หน้าแล้ว")
+            st.success(f"✅ คำนวณเสร็จสมบูรณ์!")
             st.download_button(
                 label="📥 ดาวน์โหลดไฟล์ฟอร์ม 51 (พร้อมปริ้นท์)",
                 data=output,
@@ -316,5 +355,4 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             )
 
         except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์ต้นแบบ: {e}")
-            st.info("💡 อย่าลืมอัปโหลดไฟล์ `template_51.xlsx` เข้าไปใน GitHub ด้วยนะครับ (ต้องมีชีท 'แบบค่าทำงาน' และ 'แบบวันหยุด')")
+            st.error(f"เกิดข้อผิดพลาด: {e}")
