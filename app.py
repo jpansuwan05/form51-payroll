@@ -102,7 +102,7 @@ for d in range(1, 16):
     config[col] = st.column_config.TextColumn(f"{d} {target_month_name[:3]}.", width="small")
 
 # ==========================================
-# 5. โหลดข้อมูล (ป้องกันบั๊กหน้าขาว)
+# 5. โหลดข้อมูล (ป้องกันบั๊ก F5 และ บั๊กไฟล์อัปโหลดทับข้อมูล)
 # ==========================================
 saved_roster_json = local_storage.getItem("srt_form51_data")
 
@@ -120,26 +120,33 @@ if 'form51_data' not in st.session_state:
     st.session_state.form51_data = pd.DataFrame(columns=columns_list)
 
 if uploaded_db is not None:
-    try:
-        df_db = pd.read_excel(uploaded_db, sheet_name=0)
-        name_col = next((col for col in ["รายชื่อ", "ชื่อ-สกุล", "ชื่อ-นามสกุล", "ชื่อ"] if col in df_db.columns), None)
-        id_col = next((col for col in ["เลขประจำตัว", "รหัสพนักงาน", "ID"] if col in df_db.columns), None)
-        rate_col = next((col for col in ["อัตราวันละ", "ค่าแรง", "ค่าจ้าง", "อัตรา"] if col in df_db.columns), None)
-        
-        if name_col:
-            new_df = pd.DataFrame(columns=columns_list)
-            new_df["ชื่อ-สกุล"] = df_db[name_col].astype(str)
-            if id_col: new_df["เลขประจำตัว"] = df_db[id_col].astype(str)
-            if rate_col: new_df["อัตราวันละ"] = pd.to_numeric(df_db[rate_col], errors='coerce')
-
-            new_df = new_df.fillna("").replace("nan", "") 
+    # 🛡️ เช็คว่าไฟล์ฐานข้อมูลนี้เคยถูกโหลดไปแล้วหรือยัง ป้องกันการดึงข้อมูลมาทับเวลายกยอด
+    db_hash = f"{uploaded_db.name}_{uploaded_db.size}"
+    if st.session_state.get('loaded_db_hash') != db_hash:
+        try:
+            df_db = pd.read_excel(uploaded_db, sheet_name=0)
+            name_col = next((col for col in ["รายชื่อ", "ชื่อ-สกุล", "ชื่อ-นามสกุล", "ชื่อ"] if col in df_db.columns), None)
+            id_col = next((col for col in ["เลขประจำตัว", "รหัสพนักงาน", "ID"] if col in df_db.columns), None)
+            rate_col = next((col for col in ["อัตราวันละ", "ค่าแรง", "ค่าจ้าง", "อัตรา"] if col in df_db.columns), None)
             
-            st.session_state.form51_data = new_df
-            st.session_state.editor_key += 1  # บังคับรีเฟรช UI
-            save_roster_to_local(new_df)
-            st.success("✅ โหลดข้อมูลพนักงานจากไฟล์สำเร็จ!")
-    except Exception as e:
-        st.error(f"อ่านไฟล์ฐานข้อมูลไม่สำเร็จ: {e}")
+            if name_col:
+                new_df = pd.DataFrame(columns=columns_list)
+                new_df["ชื่อ-สกุล"] = df_db[name_col].astype(str)
+                if id_col: new_df["เลขประจำตัว"] = df_db[id_col].astype(str)
+                if rate_col: new_df["อัตราวันละ"] = pd.to_numeric(df_db[rate_col], errors='coerce')
+
+                new_df = new_df.fillna("").replace("nan", "") 
+                
+                st.session_state.form51_data = new_df
+                st.session_state.editor_key += 1  
+                
+                # 🎯 บันทึกไว้ว่าไฟล์นี้โหลดเสร็จแล้ว ห้ามโหลดซ้ำอีกจนกว่าจะเปลี่ยนไฟล์
+                st.session_state.loaded_db_hash = db_hash 
+                
+                save_roster_to_local(new_df)
+                st.success("✅ โหลดข้อมูลพนักงานจากไฟล์สำเร็จ!")
+        except Exception as e:
+            st.error(f"อ่านไฟล์ฐานข้อมูลไม่สำเร็จ: {e}")
 
 # ==========================================
 # 6. แสดงตารางกรอกข้อมูล
