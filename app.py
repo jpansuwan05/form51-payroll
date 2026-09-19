@@ -107,41 +107,34 @@ for d, col in enumerate(curr_cols, 1):
 # ==========================================
 saved_roster_json = local_storage.getItem("srt_form51_data")
 
-if 'form51_data' not in st.session_state:
-    if saved_roster_json:
-        try:
-            st.session_state.form51_data = pd.read_json(io.StringIO(saved_roster_json), orient='records')
-        except:
-            st.session_state.form51_data = pd.DataFrame(columns=columns_list)
-    else:
-        st.session_state.form51_data = pd.DataFrame(columns=columns_list)
+# 🛡️ แก้ไขบั๊ก F5: ป้องกันการสร้างตารางเปล่ามาทับก่อน LocalStorage โหลดเสร็จ
+if 'loaded_from_ls' not in st.session_state:
+    st.session_state.loaded_from_ls = False
 
-# 🔄 อัปเดตลอจิกการดูดไฟล์: ให้หาคอลัมน์เลขประจำตัวและอัตราค่าจ้างด้วย
+if saved_roster_json and not st.session_state.loaded_from_ls:
+    try:
+        st.session_state.form51_data = pd.read_json(io.StringIO(saved_roster_json), orient='records')
+        st.session_state.loaded_from_ls = True
+    except:
+        pass
+
+if 'form51_data' not in st.session_state:
+    st.session_state.form51_data = pd.DataFrame(columns=columns_list)
+
 if uploaded_db is not None:
     try:
         df_db = pd.read_excel(uploaded_db, sheet_name=0)
-        
-        # หาคอลัมน์ชื่อ
         name_col = next((col for col in ["รายชื่อ", "ชื่อ-สกุล", "ชื่อ-นามสกุล", "ชื่อ"] if col in df_db.columns), None)
-        # หาคอลัมน์เลขประจำตัว
         id_col = next((col for col in ["เลขประจำตัว", "รหัสพนักงาน", "ID"] if col in df_db.columns), None)
-        # หาคอลัมน์อัตราค่าจ้าง
         rate_col = next((col for col in ["อัตราวันละ", "ค่าแรง", "ค่าจ้าง", "อัตรา"] if col in df_db.columns), None)
         
         if name_col:
             new_df = pd.DataFrame(columns=columns_list)
             new_df["ชื่อ-สกุล"] = df_db[name_col].astype(str)
-            
-            # ถ้ามีข้อมูลเลขประจำตัว ให้ดึงมา
-            if id_col:
-                new_df["เลขประจำตัว"] = df_db[id_col].astype(str)
-            # ถ้ามีข้อมูลอัตราค่าจ้าง ให้ดึงมา
-            if rate_col:
-                new_df["อัตราวันละ"] = pd.to_numeric(df_db[rate_col], errors='coerce')
+            if id_col: new_df["เลขประจำตัว"] = df_db[id_col].astype(str)
+            if rate_col: new_df["อัตราวันละ"] = pd.to_numeric(df_db[rate_col], errors='coerce')
 
-            new_df = new_df.fillna("")
-            # เคลียร์ข้อมูล Not a Number (nan) จาก pandas
-            new_df = new_df.replace("nan", "") 
+            new_df = new_df.fillna("").replace("nan", "") 
             
             st.session_state.form51_data = new_df
             save_roster_to_local(new_df)
@@ -152,6 +145,11 @@ if uploaded_db is not None:
 # ==========================================
 # 6. แสดงตารางกรอกข้อมูล
 # ==========================================
+# 🎯 ถ้ามีการกดปุ่มกู้คืน หรือยกยอดมาจากด้านล่าง ให้ทำการเซฟลงเครื่องที่จุดนี้ทันที
+if st.session_state.get('pending_save', False):
+    save_roster_to_local(st.session_state.form51_data)
+    st.session_state.pending_save = False
+
 st.markdown("### ✍️ 2. ตารางกรอกข้อมูลลงเวลา (46 วัน)")
 with st.form("editor_form"):
     edited_df = st.data_editor(
@@ -177,7 +175,6 @@ c_back1, c_back2 = st.columns(2)
 with c_back1:
     st.info("💡 **เซฟงานเก็บไว้:** ดาวน์โหลดข้อมูลที่กรอกไว้เป็นไฟล์ Excel")
     
-    # สร้างไฟล์ Backup จากข้อมูลที่กำลังกรอกอยู่
     backup_output = io.BytesIO()
     with pd.ExcelWriter(backup_output, engine='xlsxwriter') as writer:
         edited_df.to_excel(writer, index=False, sheet_name='Backup')
@@ -198,30 +195,24 @@ with c_back2:
     if uploaded_backup is not None:
         try:
             df_backup = pd.read_excel(uploaded_backup)
-            # เช็คว่าเป็นไฟล์ Backup ของระบบเราจริงๆ
             if "ชื่อ-สกุล" in df_backup.columns and "เลขประจำตัว" in df_backup.columns:
-                df_backup = df_backup.fillna("").astype(str)
-                df_backup = df_backup.replace("nan", "")
+                df_backup = df_backup.fillna("").astype(str).replace("nan", "")
                 
                 c_btn1, c_btn2 = st.columns(2)
                 
                 with c_btn1:
                     if st.button("✨ กู้คืน (ทำเดือนเดิมต่อ)", use_container_width=True, type="primary"):
                         st.session_state.form51_data = df_backup
-                        save_roster_to_local(df_backup)
-                        st.success("✅ กู้คืนข้อมูลสำเร็จ! กรุณากดรีเฟรชหน้าเว็บ (F5) 1 ครั้ง")
+                        st.session_state.pending_save = True # สั่งให้เซฟในรอบถัดไป
+                        st.rerun() # 🚀 รีเฟรชแอปตัวเองทันที! (ไม่ต้องกด F5)
                         
                 with c_btn2:
                     if st.button("⏭️ ยกยอด (เริ่มเดือนใหม่)", use_container_width=True, type="secondary"):
-                        # สร้างตารางเปล่าๆ ตามจำนวนวันของเดือนใหม่
                         new_df = pd.DataFrame(columns=columns_list)
-                        
-                        # 1. ดูดชื่อและเลขประจำตัวมาจากไฟล์เดิม
                         new_df["ชื่อ-สกุล"] = df_backup["ชื่อ-สกุล"]
                         new_df["เลขประจำตัว"] = df_backup["เลขประจำตัว"]
                         new_df["อัตราวันละ"] = df_backup.get("อัตราวันละ", "")
                         
-                        # 2. 🪄 เวทมนตร์ยกยอด: ย้าย 1-15 ด.ปัจจุบัน (C) ไปเป็น 1-15 ด.ก่อนหน้า (P)
                         for i in range(1, 16):
                             old_c = f"C{i}"
                             new_p = f"P{i}"
@@ -230,8 +221,8 @@ with c_back2:
                                 
                         new_df = new_df.fillna("")
                         st.session_state.form51_data = new_df
-                        save_roster_to_local(new_df)
-                        st.success("✅ ดึงข้อมูลวันที่ 1-15 มารอไว้ให้แล้ว! กรุณากดรีเฟรชหน้าเว็บ (F5) 1 ครั้งเพื่อเริ่มทำเดือนใหม่ได้เลย")
+                        st.session_state.pending_save = True # สั่งให้เซฟในรอบถัดไป
+                        st.rerun() # 🚀 รีเฟรชแอปตัวเองทันที! (ไม่ต้องกด F5)
             else:
                 st.warning("⚠️ ไฟล์นี้ไม่ใช่ไฟล์ Backup แบบฟอร์ม 51 ครับ")
         except Exception as e:
