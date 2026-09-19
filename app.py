@@ -43,25 +43,36 @@ with st.container(border=True):
 st.markdown("### ✍️ 2. ตารางกรอกข้อมูลลงเวลา")
 st.info(f"**คำแนะนำ:** ให้กรอกข้อมูลของเดือนก่อนหน้า ({prev_month_name}) ให้ครบเดือน และกรอกของเดือนปัจจุบัน ({target_month_name}) วันที่ 1-15 ระบบจะดึงไปแยกชีทให้อัตโนมัติ")
 
-# สร้าง DataFrame สำหรับรับข้อมูล
-if 'form51_data' not in st.session_state:
-    df_init = pd.DataFrame(columns=["ชื่อ-สกุล"])
-    st.session_state.form51_data = df_init
-
 # กำหนด Config ของคอลัมน์เพื่อให้เป็น Dropdown
 config = {"ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium")}
 
-# สร้างคอลัมน์เดือนก่อน (1 ถึง สิ้นเดือน)
+# สร้างรายการคอลัมน์ทั้งหมดที่ต้องใช้
+columns_list = ["ชื่อ-สกุล"]
+
+# สร้างชื่อคอลัมน์เดือนก่อน (1 ถึง สิ้นเดือน)
 prev_cols = [f"P{d}" for d in range(1, num_days_prev + 1)]
 for d, col in enumerate(prev_cols, 1):
-    st.session_state.form51_data.setdefault(col, "")
+    columns_list.append(col)
     config[col] = st.column_config.SelectboxColumn(f"{d} {prev_month_name[:3]}.", options=shift_codes, width="small")
 
-# สร้างคอลัมน์เดือนปัจจุบัน (1 ถึง 15)
+# สร้างชื่อคอลัมน์เดือนปัจจุบัน (1 ถึง 15)
 curr_cols = [f"C{d}" for d in range(1, 16)]
 for d, col in enumerate(curr_cols, 1):
-    st.session_state.form51_data.setdefault(col, "")
+    columns_list.append(col)
     config[col] = st.column_config.SelectboxColumn(f"{d} {target_month_name[:3]}.", options=shift_codes, width="small")
+
+# สร้าง DataFrame เริ่มต้น (ถ้ายังไม่มี)
+if 'form51_data' not in st.session_state:
+    df_init = pd.DataFrame(columns=columns_list)
+    st.session_state.form51_data = df_init
+else:
+    # เผื่อกรณีเปลี่ยนเดือน ให้แน่ใจว่าคอลัมน์ใน session_state อัปเดตตรงกัน
+    current_df = st.session_state.form51_data
+    # เก็บข้อมูล 'ชื่อ-สกุล' ไว้
+    new_df = pd.DataFrame(columns=columns_list)
+    if not current_df.empty and "ชื่อ-สกุล" in current_df.columns:
+        new_df["ชื่อ-สกุล"] = current_df["ชื่อ-สกุล"]
+    st.session_state.form51_data = new_df
 
 # แสดงตารางให้กรอกข้อมูล
 edited_df = st.data_editor(
@@ -159,7 +170,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         # สร้าง Excel File ลงใน Memory (BytesIO)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # แปลงเป็น DataFrame และปรับขนาดคอลัมน์
+            # แปลงเป็น DataFrame
             df_work = pd.DataFrame(work_data)
             df_holiday = pd.DataFrame(holiday_data)
             
