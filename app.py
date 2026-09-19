@@ -297,8 +297,10 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                         ws.cell(row=current_row, column=col_idx).value = person_data.get(str(d), "")
                         
                     ws.cell(row=current_row, column=37).value = person_data["พรบ."] 
-                    ws.cell(row=current_row, column=41).value = person_data[".6 (2/น)"]
-                    ws.cell(row=current_row, column=43).value = person_data[".7 (2/ย)"]
+                    
+                    # 🎯 แก้ไขพิกัดตรงนี้ให้ตรงกับ AQ และ AS ตามไฟล์ต้นฉบับ
+                    ws.cell(row=current_row, column=43).value = person_data[".6 (2/น)"] # ยิงเข้าคอลัมน์ AQ
+                    ws.cell(row=current_row, column=45).value = person_data[".7 (2/ย)"] # ยิงเข้าคอลัมน์ AS
 
             wb.remove(ws_work_template)
             wb.remove(ws_holiday_template)
