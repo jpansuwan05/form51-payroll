@@ -27,11 +27,13 @@ def save_roster_to_local(df):
         components.html(js_code, height=0, width=0)
 
 # ==========================================
-# 2. ข้อมูลตั้งต้น
+# 2. ข้อมูลตั้งต้น & ระบบ Key บังคับรีเฟรชตาราง
 # ==========================================
+if 'editor_key' not in st.session_state:
+    st.session_state.editor_key = 0
+
 months_list = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", 
                "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"]
-shift_codes = ["", "/", "พ", "ป", "น", "ย", "2น", "2ย"]
 
 st.title("📝 ระบบสรุปยอดทำงานและวันหยุดลูกจ้าง (Export แบบ 51)")
 
@@ -64,7 +66,6 @@ with st.container(border=True):
     st.markdown("---")
     st.markdown("##### 📝 ข้อมูลตัวแปร (โปรแกรมจะนำไปแทนที่ตัวแปรในฟอร์มแบบอัตโนมัติ)")
     
-    # เพิ่มช่อง [DATE] กลับมาให้แล้วครับ
     col_contract, col_doc_date = st.columns(2)
     with col_contract:
         contract_no = st.text_input("เลขที่สัญญา/คำสั่ง [CONTRACT]", value="")
@@ -80,9 +81,8 @@ with st.container(border=True):
         edate_contract = st.text_input("วันสิ้นสุดสัญญา [EDATE_CONTRACT]", value="")
 
 # ==========================================
-# 4. เตรียมคอลัมน์ตารางหน้าเว็บ (อัปเดตระบบพิมพ์เร็ว)
+# 4. เตรียมคอลัมน์ตารางหน้าเว็บ (ระบบพิมพ์เร็ว)
 # ==========================================
-# ล็อค 3 คอลัมน์แรกให้อยู่ติดขอบซ้ายเสมอ
 config = {
     "ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium", pinned=True),
     "เลขประจำตัว": st.column_config.TextColumn("เลขประจำตัว", width="small", pinned=True),
@@ -91,23 +91,21 @@ config = {
 
 columns_list = ["ชื่อ-สกุล", "เลขประจำตัว", "อัตราวันละ"]
 
-# เปลี่ยนคอลัมน์วันที่ให้เป็น TextColumn แทน SelectboxColumn เพื่อให้คีย์บอร์ดเลื่อนเร็วได้
-prev_cols = [f"P{d}" for d in range(1, num_days_prev + 1)]
-for d, col in enumerate(prev_cols, 1):
+for d in range(1, num_days_prev + 1):
+    col = f"P{d}"
     columns_list.append(col)
     config[col] = st.column_config.TextColumn(f"{d} {prev_month_name[:3]}.", width="small")
 
-curr_cols = [f"C{d}" for d in range(1, 16)]
-for d, col in enumerate(curr_cols, 1):
+for d in range(1, 16):
+    col = f"C{d}"
     columns_list.append(col)
     config[col] = st.column_config.TextColumn(f"{d} {target_month_name[:3]}.", width="small")
 
 # ==========================================
-# 5. โหลดข้อมูล (จากไฟล์อัปโหลด หรือ LocalStorage)
+# 5. โหลดข้อมูล (ป้องกันบั๊กหน้าขาว)
 # ==========================================
 saved_roster_json = local_storage.getItem("srt_form51_data")
 
-# 🛡️ แก้ไขบั๊ก F5: ป้องกันการสร้างตารางเปล่ามาทับก่อน LocalStorage โหลดเสร็จ
 if 'loaded_from_ls' not in st.session_state:
     st.session_state.loaded_from_ls = False
 
@@ -137,15 +135,15 @@ if uploaded_db is not None:
             new_df = new_df.fillna("").replace("nan", "") 
             
             st.session_state.form51_data = new_df
+            st.session_state.editor_key += 1  # บังคับรีเฟรช UI
             save_roster_to_local(new_df)
-            st.success("✅ โหลดรายชื่อ พร้อมเลขประจำตัวและอัตราค่าจ้างสำเร็จ!")
+            st.success("✅ โหลดข้อมูลพนักงานจากไฟล์สำเร็จ!")
     except Exception as e:
         st.error(f"อ่านไฟล์ฐานข้อมูลไม่สำเร็จ: {e}")
 
 # ==========================================
 # 6. แสดงตารางกรอกข้อมูล
 # ==========================================
-# 🎯 ถ้ามีการกดปุ่มกู้คืน หรือยกยอดมาจากด้านล่าง ให้ทำการเซฟลงเครื่องที่จุดนี้ทันที
 if st.session_state.get('pending_save', False):
     save_roster_to_local(st.session_state.form51_data)
     st.session_state.pending_save = False
@@ -154,79 +152,18 @@ st.markdown("### ✍️ 2. ตารางกรอกข้อมูลลง�
 with st.form("editor_form"):
     edited_df = st.data_editor(
         st.session_state.form51_data,
+        key=f"data_editor_{st.session_state.editor_key}", # 🎯 กุญแจสำคัญที่ทำให้ตารางอัปเดต!
         num_rows="dynamic",
         column_config=config,
         use_container_width=True,
         height=500
     )
-    submit_btn = st.form_submit_button("💾 บันทึกข้อมูลลงเครื่องเบราว์เซอร์ (กดบ่อยๆ กันเหนียว)", type="secondary")
+    submit_btn = st.form_submit_button("💾 บันทึกข้อมูลลงเครื่องเบราว์เซอร์ (กันเหนียว)", type="secondary")
     if submit_btn:
         st.session_state.form51_data = edited_df
         save_roster_to_local(edited_df)
         st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
 
-# ==========================================
-# 🛡️ ระบบ Backup และ ยกยอดไปเดือนถัดไป
-# ==========================================
-st.markdown("---")
-st.markdown("### 🛡️ ระบบจัดการไฟล์ Backup & เริ่มเดือนใหม่")
-c_back1, c_back2 = st.columns(2)
-
-with c_back1:
-    st.info("💡 **เซฟงานเก็บไว้:** ดาวน์โหลดข้อมูลที่กรอกไว้เป็นไฟล์ Excel")
-    
-    backup_output = io.BytesIO()
-    with pd.ExcelWriter(backup_output, engine='xlsxwriter') as writer:
-        edited_df.to_excel(writer, index=False, sheet_name='Backup')
-    backup_output.seek(0)
-    
-    st.download_button(
-        label="📥 ดาวน์โหลดไฟล์ Backup",
-        data=backup_output,
-        file_name=f"Backup_แบบ51_{target_month_name}_{target_year_be}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
-
-with c_back2:
-    st.info("🔄 **นำไฟล์มาใช้:** อัปโหลดไฟล์ Backup ของเดือนนี้ หรือ 'เดือนที่แล้ว'")
-    uploaded_backup = st.file_uploader("📂 อัปโหลดไฟล์ Backup ของคุณที่นี่", type=["xlsx"], key="backup_upload")
-    
-    if uploaded_backup is not None:
-        try:
-            df_backup = pd.read_excel(uploaded_backup)
-            if "ชื่อ-สกุล" in df_backup.columns and "เลขประจำตัว" in df_backup.columns:
-                df_backup = df_backup.fillna("").astype(str).replace("nan", "")
-                
-                c_btn1, c_btn2 = st.columns(2)
-                
-                with c_btn1:
-                    if st.button("✨ กู้คืน (ทำเดือนเดิมต่อ)", use_container_width=True, type="primary"):
-                        st.session_state.form51_data = df_backup
-                        st.session_state.pending_save = True # สั่งให้เซฟในรอบถัดไป
-                        st.rerun() # 🚀 รีเฟรชแอปตัวเองทันที! (ไม่ต้องกด F5)
-                        
-                with c_btn2:
-                    if st.button("⏭️ ยกยอด (เริ่มเดือนใหม่)", use_container_width=True, type="secondary"):
-                        new_df = pd.DataFrame(columns=columns_list)
-                        new_df["ชื่อ-สกุล"] = df_backup["ชื่อ-สกุล"]
-                        new_df["เลขประจำตัว"] = df_backup["เลขประจำตัว"]
-                        new_df["อัตราวันละ"] = df_backup.get("อัตราวันละ", "")
-                        
-                        for i in range(1, 16):
-                            old_c = f"C{i}"
-                            new_p = f"P{i}"
-                            if old_c in df_backup.columns and new_p in new_df.columns:
-                                new_df[new_p] = df_backup[old_c]
-                                
-                        new_df = new_df.fillna("")
-                        st.session_state.form51_data = new_df
-                        st.session_state.pending_save = True # สั่งให้เซฟในรอบถัดไป
-                        st.rerun() # 🚀 รีเฟรชแอปตัวเองทันที! (ไม่ต้องกด F5)
-            else:
-                st.warning("⚠️ ไฟล์นี้ไม่ใช่ไฟล์ Backup แบบฟอร์ม 51 ครับ")
-        except Exception as e:
-            st.error(f"ไฟล์ Backup ไม่ถูกต้อง: {e}")
 # ==========================================
 # 7. ระบบคำนวณและ Export 
 # ==========================================
@@ -235,13 +172,9 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
     if edited_df.empty or edited_df["ชื่อ-สกุล"].isnull().all():
         st.warning("กรุณากรอกชื่อพนักงานอย่างน้อย 1 คน")
     else:
-        # ========================================================
-        # 🛠️ ระบบจัดเรียงข้อมูลใหม่ตาม "เลขประจำตัว" (น้อยไปมาก)
-        # ========================================================
+        # 🛠️ จัดเรียงข้อมูลตาม "เลขประจำตัว" จากน้อยไปมาก
         sort_df = edited_df.copy()
-        # สร้างคอลัมน์จำลองเพื่อแปลงเลขประจำตัวเป็นตัวเลข (ป้องกันปัญหา 10 มาก่อน 2)
         sort_df['sort_key'] = pd.to_numeric(sort_df['เลขประจำตัว'], errors='coerce')
-        # สั่งเรียงลำดับจากน้อยไปมาก (คนที่ไม่มีเลขประจำตัวจะถูกดันไปไว้ล่างสุด)
         sort_df = sort_df.sort_values(by='sort_key', ascending=True, na_position='last').drop(columns=['sort_key'])
         
         work_data = []    
@@ -260,12 +193,10 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             if v == "2ย": return "2/ย"  
             return "" 
         
-        # 🔄 เปลี่ยนมาวนลูปอ่านข้อมูลจากตารางที่จัดเรียงแล้ว (sort_df)
         for idx, row in sort_df.iterrows():
             name = str(row.get("ชื่อ-สกุล", "")).strip()
             if not name or name == "nan": continue
             
-            # เก็บค่าเลขประจำตัวและอัตรา ไว้โยนลง Excel
             emp_id = str(row.get("เลขประจำตัว", "")).strip()
             emp_rate = str(row.get("อัตราวันละ", "")).strip()
             if emp_id == "nan": emp_id = ""
@@ -275,7 +206,6 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             prev_1_15_raw = [str(row.get(prev_cols[i], "")).strip() for i in range(0, 15)]
             prev_16_end_raw = [str(row.get(prev_cols[i], "")).strip() for i in range(15, num_days_prev)]
             
-            # 📁 ชีท "ค่าทำงาน"
             work_curr_1_15 = [map_work_sheet(v) for v in curr_1_15_raw]
             work_prev_16_end = [map_work_sheet(v) for v in prev_16_end_raw]
             working_range = work_curr_1_15 + work_prev_16_end
@@ -286,7 +216,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             count_sick = working_range.count("ป")
             
             row_work = {
-                "ที่": len(work_data) + 1,  # ลำดับที่ จะรันใหม่ 1, 2, 3... ตามที่เรียงสวยๆ แล้ว
+                "ที่": len(work_data) + 1, 
                 "ชื่อ-นามสกุล": name,
                 "เลขประจำตัว": emp_id,
                 "อัตราวันละ": emp_rate
@@ -302,7 +232,6 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             row_work[".6 (น)"] = count_n
             work_data.append(row_work)
             
-            # 🏖️ ชีท "วันหยุด"
             holiday_prev_1_15 = [map_holiday_sheet(v) for v in prev_1_15_raw]
             holiday_prev_16_end = [map_holiday_sheet(v) for v in prev_16_end_raw]
             holiday_range = holiday_prev_1_15 + holiday_prev_16_end
@@ -313,7 +242,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             val_7 = count_2y * 2
             
             row_holiday = {
-                "ที่": len(holiday_data) + 1, # ลำดับที่ รันใหม่เช่นเดียวกัน
+                "ที่": len(holiday_data) + 1, 
                 "ชื่อ-นามสกุล": name,
                 "เลขประจำตัว": emp_id,
                 "อัตราวันละ": emp_rate
@@ -330,15 +259,11 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         work_chunks = [work_data[i:i + chunk_size] for i in range(0, len(work_data), chunk_size)]
         holiday_chunks = [holiday_data[i:i + chunk_size] for i in range(0, len(holiday_data), chunk_size)]
 
-        # ==========================================
-        # 🖨️ สร้างไฟล์ Excel ลงฟอร์มต้นแบบ
-        # ==========================================
-        import openpyxl
         output = io.BytesIO()
         try:
             wb = openpyxl.load_workbook("template_51.xlsx")
-            ws_work_template = wb["ค่าทำงาน"]  
-            ws_holiday_template = wb["วันหยุด"] 
+            ws_work_template = wb["แบบค่าทำงาน"]  
+            ws_holiday_template = wb["แบบวันหยุด"] 
 
             def replace_tags_in_sheet(ws, page_num):
                 replacements = {
@@ -347,7 +272,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                     "[N]": str(num_days_prev),              
                     "[PAGE]": str(page_num),                
                     "[CONTRACT]": str(contract_no),
-                    "[DATE]": str(doc_date),                # <--- เพิ่ม [DATE] กลับเข้าสู่ระบบแล้ว!
+                    "[DATE]": str(doc_date),
                     "[DATE_CONTRACT]": str(date_contract),
                     "[SDATE_CONTRACT]": str(sdate_contract),
                     "[EDATE_CONTRACT]": str(edate_contract)
@@ -361,9 +286,6 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                                 if tag in cell.value:
                                     cell.value = cell.value.replace(tag, str(actual_value))
 
-            # ----------------------------------------
-            # 1. จัดการฝั่ง "ค่าทำงาน"
-            # ----------------------------------------
             for page_idx, chunk in enumerate(work_chunks):
                 ws = wb.copy_worksheet(ws_work_template)
                 ws.title = f"ค่าทำงาน_หน้า{page_idx + 1}"
@@ -389,9 +311,6 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                     ws.cell(row=current_row, column=40).value = person_data[".2 (พ)"]
                     ws.cell(row=current_row, column=41).value = person_data[".6 (น)"]
 
-            # ----------------------------------------
-            # 2. จัดการฝั่ง "วันหยุด"
-            # ----------------------------------------
             for page_idx, chunk in enumerate(holiday_chunks):
                 ws = wb.copy_worksheet(ws_holiday_template)
                 ws.title = f"วันหยุด_หน้า{page_idx + 1}"
@@ -419,7 +338,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             wb.save(output)
             output.seek(0)
             
-            st.success(f"✅ คำนวณเสร็จสมบูรณ์! และจัดเรียงรายชื่อตาม 'เลขประจำตัว' จากน้อยไปมากให้เรียบร้อยแล้ว!")
+            st.success(f"✅ คำนวณและดึงข้อมูลลงฟอร์ม 51 เรียบร้อยแล้ว!")
             st.download_button(
                 label="📥 ดาวน์โหลดไฟล์ฟอร์ม 51 (พร้อมปริ้นท์)",
                 data=output,
@@ -428,4 +347,70 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             )
 
         except Exception as e:
-            st.error(f"เกิดข้อผิดพลาด: {e}")
+            st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์ต้นแบบ: {e}")
+
+# ==========================================
+# 8. ระบบ Backup และ ยกยอดไปเดือนถัดไป
+# ==========================================
+st.markdown("---")
+st.markdown("### 🛡️ ระบบจัดการไฟล์ Backup & เริ่มเดือนใหม่")
+c_back1, c_back2 = st.columns(2)
+
+with c_back1:
+    st.info("💡 **เซฟงานเก็บไว้:** ดาวน์โหลดข้อมูลที่กรอกไว้เป็นไฟล์ Excel")
+    
+    backup_output = io.BytesIO()
+    with pd.ExcelWriter(backup_output, engine='xlsxwriter') as writer:
+        st.session_state.form51_data.to_excel(writer, index=False, sheet_name='Backup')
+    backup_output.seek(0)
+    
+    st.download_button(
+        label="📥 ดาวน์โหลดไฟล์ Backup",
+        data=backup_output,
+        file_name=f"Backup_แบบ51_{target_month_name}_{target_year_be}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
+with c_back2:
+    st.info("🔄 **นำไฟล์มาใช้:** อัปโหลดไฟล์ Backup ของเดือนนี้ หรือ 'เดือนที่แล้ว'")
+    uploaded_backup = st.file_uploader("📂 อัปโหลดไฟล์ Backup ของคุณที่นี่", type=["xlsx"], key="backup_upload")
+    
+    if uploaded_backup is not None:
+        try:
+            df_backup = pd.read_excel(uploaded_backup)
+            if "ชื่อ-สกุล" in df_backup.columns and "เลขประจำตัว" in df_backup.columns:
+                df_backup = df_backup.fillna("").astype(str).replace("nan", "")
+                
+                c_btn1, c_btn2 = st.columns(2)
+                
+                with c_btn1:
+                    if st.button("✨ กู้คืน (ทำเดือนเดิมต่อ)", use_container_width=True, type="primary"):
+                        st.session_state.form51_data = df_backup
+                        st.session_state.editor_key += 1 # 🚀 เปลี่ยนกุญแจให้ตารางอัปเดต
+                        st.session_state.pending_save = True 
+                        st.rerun() # 🚀 รีเฟรชตัวเองทันที!
+                        
+                with c_btn2:
+                    if st.button("⏭️ ยกยอด (เริ่มเดือนใหม่)", use_container_width=True, type="secondary"):
+                        new_df = pd.DataFrame(columns=columns_list)
+                        new_df["ชื่อ-สกุล"] = df_backup["ชื่อ-สกุล"]
+                        new_df["เลขประจำตัว"] = df_backup["เลขประจำตัว"]
+                        new_df["อัตราวันละ"] = df_backup.get("อัตราวันละ", "")
+                        
+                        # ย้ายข้อมูลวันที่ 1-15 จากเดือนก่อน (C) ไปใส่เดือนนี้ (P)
+                        for i in range(1, 16):
+                            old_c = f"C{i}"
+                            new_p = f"P{i}"
+                            if old_c in df_backup.columns and new_p in new_df.columns:
+                                new_df[new_p] = df_backup[old_c]
+                                
+                        new_df = new_df.fillna("")
+                        st.session_state.form51_data = new_df
+                        st.session_state.editor_key += 1 # 🚀 เปลี่ยนกุญแจให้ตารางอัปเดต
+                        st.session_state.pending_save = True 
+                        st.rerun() # 🚀 รีเฟรชตัวเองทันที!
+            else:
+                st.warning("⚠️ ไฟล์นี้ไม่ใช่ไฟล์ Backup แบบฟอร์ม 51 ครับ")
+        except Exception as e:
+            st.error(f"ไฟล์ Backup ไม่ถูกต้อง: {e}")
