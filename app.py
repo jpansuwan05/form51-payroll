@@ -10,8 +10,9 @@ st.set_page_config(page_title="ระบบสรุปยอดทำงาน�
 # ==========================================
 months_list = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", 
                "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"]
-# เพิ่ม 2/น และ 2/ย ไว้ให้เลือกใน Dropdown
-shift_codes = ["", "/", "น", "ย", "พ", "ป", "2/น", "2/ย"]
+
+# ตัวเลือกในหน้า UI (กรอกแบบไม่มีเครื่องหมายทับ)
+shift_codes = ["", "/", "พ", "ป", "น", "ย", "2น", "2ย"]
 
 st.title("📝 ระบบสรุปยอดทำงานและวันหยุดลูกจ้าง (Export แบบ 51)")
 
@@ -22,7 +23,7 @@ with st.container(border=True):
     st.subheader("⚙️ 1. เลือกเดือนปัจจุบันที่ต้องการเบิกเงิน")
     c1, c2 = st.columns(2)
     with c1:
-        target_month_name = st.selectbox("เดือนปัจจุบัน", months_list, index=7)
+        target_month_name = st.selectbox("เดือนปัจจุบัน", months_list, index=7) # ค่าเริ่มต้น สิงหาคม
     with c2:
         target_year_be = st.number_input("ปี พ.ศ.", value=2569)
         
@@ -38,25 +39,26 @@ with st.container(border=True):
     prev_month_name = months_list[prev_month_idx - 1]
     _, num_days_prev = calendar.monthrange(prev_year_be - 543, prev_month_idx)
 
-st.markdown("### ✍️ 2. ตารางกรอกข้อมูลลงเวลา")
+st.markdown("### ✍️ 2. ตารางกรอกข้อมูลลงเวลา (46 วัน)")
 st.info(f"**คำแนะนำ:** ให้กรอกข้อมูลของเดือนก่อนหน้า ({prev_month_name}) ให้ครบเดือน และกรอกของเดือนปัจจุบัน ({target_month_name}) วันที่ 1-15")
 
 config = {"ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium")}
 columns_list = ["ชื่อ-สกุล"]
 
+# สร้างคอลัมน์เดือนก่อน (1 ถึง สิ้นเดือน)
 prev_cols = [f"P{d}" for d in range(1, num_days_prev + 1)]
 for d, col in enumerate(prev_cols, 1):
     columns_list.append(col)
     config[col] = st.column_config.SelectboxColumn(f"{d} {prev_month_name[:3]}.", options=shift_codes, width="small")
 
+# สร้างคอลัมน์เดือนปัจจุบัน (1 ถึง 15)
 curr_cols = [f"C{d}" for d in range(1, 16)]
 for d, col in enumerate(curr_cols, 1):
     columns_list.append(col)
     config[col] = st.column_config.SelectboxColumn(f"{d} {target_month_name[:3]}.", options=shift_codes, width="small")
 
 if 'form51_data' not in st.session_state:
-    df_init = pd.DataFrame(columns=columns_list)
-    st.session_state.form51_data = df_init
+    st.session_state.form51_data = pd.DataFrame(columns=columns_list)
 else:
     current_df = st.session_state.form51_data
     new_df = pd.DataFrame(columns=columns_list)
@@ -83,33 +85,33 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         work_data = []    
         holiday_data = [] 
 
-        # 🧠 กฎการแยกร่าง (Mapping Rules) ตามที่คุณกำหนด
+        # 🧠 กฎการแยกตัวหนังสือที่ถูกต้อง 100% ตามที่คุณสั่ง
         def map_work_sheet(v):
             v = str(v).strip()
-            if v in ["2/น", "2น"]: return "น"
-            if v in ["2/ย", "2ย"]: return "ย"
+            if v == "2น": return "น"
+            if v == "2ย": return "ย"
             if v in ["/", "พ", "ป", "น", "ย"]: return v
             return ""
 
         def map_holiday_sheet(v):
             v = str(v).strip()
-            if v in ["2/น", "2น"]: return "2/น"
-            if v in ["2/ย", "2ย"]: return "2/ย"
-            return "" # ถ้าเป็นกรอกตัวอื่น ให้เป็นช่องว่าง
+            if v == "2น": return "2/น"  
+            if v == "2ย": return "2/ย"  
+            return "" 
         
         for idx, row in edited_df.iterrows():
             name = str(row.get("ชื่อ-สกุล", "")).strip()
             if not name or name == "nan": continue
             
-            # --- ดึงข้อมูลดิบจากตาราง (Raw Data) ---
+            # --- ดึงข้อมูลดิบจากตาราง 46 วัน ---
             curr_1_15_raw = [str(row.get(c, "")).strip() for c in curr_cols]
             prev_1_15_raw = [str(row.get(prev_cols[i], "")).strip() for i in range(0, 15)]
             prev_16_end_raw = [str(row.get(prev_cols[i], "")).strip() for i in range(15, num_days_prev)]
             
             # ========================================================
-            # 📁 สร้างข้อมูล ชีท "ค่าทำงาน" (รอบ 16 ด.ก่อน - 15 ด.นี้)
+            # 📁 สรุปข้อมูล ชีท "ค่าทำงาน" (รอบ 16 ด.ก่อน - 15 ด.นี้)
             # ========================================================
-            # แปลงรหัสก่อนคำนวณ
+            # แปลงรหัส
             work_curr_1_15 = [map_work_sheet(v) for v in curr_1_15_raw]
             work_prev_16_end = [map_work_sheet(v) for v in prev_16_end_raw]
             
@@ -126,9 +128,9 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                 "ที่": len(work_data) + 1,
                 "ชื่อ-นามสกุล": name,
             }
-            # วันที่ 1-15 ใช้ข้อมูลเดือนนี้ (ที่แปลงร่างแล้ว)
+            # เรียงคอลัมน์: 1-15 (เดือนนี้)
             for i in range(1, 16): row_work[str(i)] = work_curr_1_15[i-1]
-            # วันที่ 16-สิ้นเดือน ใช้ข้อมูลเดือนก่อน (ที่แปลงร่างแล้ว)
+            # เรียงคอลัมน์: 16-สิ้นเดือน (เดือนก่อน)
             for i in range(16, num_days_prev + 1): row_work[str(i)] = work_prev_16_end[i-16]
             
             row_work["ปกติ"] = count_normal
@@ -141,9 +143,9 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             work_data.append(row_work)
             
             # ========================================================
-            # 🏖️ สร้างข้อมูล ชีท "วันหยุด" (รอบ 1 - สิ้นเดือน ด.ก่อน)
+            # 🏖️ สรุปข้อมูล ชีท "วันหยุด" (รอบ 1 - สิ้นเดือน ด.ก่อน)
             # ========================================================
-            # แปลงรหัสก่อนคำนวณ
+            # แปลงรหัส
             holiday_prev_1_15 = [map_holiday_sheet(v) for v in prev_1_15_raw]
             holiday_prev_16_end = [map_holiday_sheet(v) for v in prev_16_end_raw]
             
@@ -160,9 +162,9 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                 "ที่": len(holiday_data) + 1,
                 "ชื่อ-นามสกุล": name,
             }
-            # วันที่ 1-15 ใช้ข้อมูลเดือนก่อน (ที่แปลงร่างแล้ว)
+            # เรียงคอลัมน์: 1-15 (เดือนก่อน)
             for i in range(1, 16): row_holiday[str(i)] = holiday_prev_1_15[i-1]
-            # วันที่ 16-สิ้นเดือน ใช้ข้อมูลเดือนก่อน (ที่แปลงร่างแล้ว)
+            # เรียงคอลัมน์: 16-สิ้นเดือน (เดือนก่อน)
             for i in range(16, num_days_prev + 1): row_holiday[str(i)] = holiday_prev_16_end[i-16]
             
             row_holiday["พรบ."] = total_holiday_prb
@@ -187,15 +189,15 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             format_center = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
             worksheet_w.set_column('A:A', 5, format_center)
             worksheet_w.set_column('B:B', 25)
-            worksheet_w.set_column('C:BZ', 8, format_center)
+            worksheet_w.set_column('C:BZ', 5, format_center)  
             
             worksheet_h.set_column('A:A', 5, format_center)
             worksheet_h.set_column('B:B', 25)
-            worksheet_h.set_column('C:BZ', 8, format_center)
+            worksheet_h.set_column('C:BZ', 5, format_center)
 
         output.seek(0)
         
-        st.success("✅ คำนวณเสร็จสมบูรณ์! ข้อมูลถูก 'แยกร่าง' ลง 2 ชีทตามกฎเรียบร้อยแล้ว")
+        st.success("✅ คำนวณเสร็จสมบูรณ์! ข้อมูลจากตาราง 46 วัน ถูกดึงไปสร้าง 2 ชีทตามกฎเรียบร้อยแล้ว")
         st.download_button(
             label="📥 ดาวน์โหลดไฟล์ Excel (สรุปยอดแบบ 51)",
             data=output,
