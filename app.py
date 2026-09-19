@@ -274,8 +274,8 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         output = io.BytesIO()
         try:
             wb = openpyxl.load_workbook("template_51.xlsx")
-            ws_work_template = wb["แบบค่าทำงาน"]  
-            ws_holiday_template = wb["แบบวันหยุด"] 
+            ws_work_template = wb["ค่าทำงาน"]  
+            ws_holiday_template = wb["วันหยุด"] 
 
             def replace_tags_in_sheet(ws, page_num):
                 replacements = {
