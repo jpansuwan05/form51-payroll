@@ -168,14 +168,14 @@ with st.form("editor_form"):
         st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
 
 # ==========================================
-# 🛡️ ระบบ Backup กันเหนียว (เซฟเป็นไฟล์ Excel)
+# 🛡️ ระบบ Backup และ ยกยอดไปเดือนถัดไป
 # ==========================================
 st.markdown("---")
-st.markdown("### 🛡️ ระบบสำรองข้อมูลฉุกเฉิน (ป้องกันเผลอปิดหน้าเว็บ)")
+st.markdown("### 🛡️ ระบบจัดการไฟล์ Backup & เริ่มเดือนใหม่")
 c_back1, c_back2 = st.columns(2)
 
 with c_back1:
-    st.info("💡 **เซฟงานเก็บไว้:** ดาวน์โหลดข้อมูลที่กรอกค้างไว้เป็นไฟล์ Excel ลงเครื่อง")
+    st.info("💡 **เซฟงานเก็บไว้:** ดาวน์โหลดข้อมูลที่กรอกไว้เป็นไฟล์ Excel")
     
     # สร้างไฟล์ Backup จากข้อมูลที่กำลังกรอกอยู่
     backup_output = io.BytesIO()
@@ -184,16 +184,17 @@ with c_back1:
     backup_output.seek(0)
     
     st.download_button(
-        label="📥 ดาวน์โหลดไฟล์ Backup (แบบร่าง)",
+        label="📥 ดาวน์โหลดไฟล์ Backup",
         data=backup_output,
-        file_name=f"Backup_แบบร่าง_51_{target_month_name}.xlsx",
+        file_name=f"Backup_แบบ51_{target_month_name}_{target_year_be}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
 
 with c_back2:
-    st.info("🔄 **กู้คืนงานเดิม:** อัปโหลดไฟล์ Backup (แบบร่าง) กลับเข้ามาทำต่อ")
+    st.info("🔄 **นำไฟล์มาใช้:** อัปโหลดไฟล์ Backup ของเดือนนี้ หรือ 'เดือนที่แล้ว'")
     uploaded_backup = st.file_uploader("📂 อัปโหลดไฟล์ Backup ของคุณที่นี่", type=["xlsx"], key="backup_upload")
+    
     if uploaded_backup is not None:
         try:
             df_backup = pd.read_excel(uploaded_backup)
@@ -202,10 +203,35 @@ with c_back2:
                 df_backup = df_backup.fillna("").astype(str)
                 df_backup = df_backup.replace("nan", "")
                 
-                if st.button("✨ กู้คืนข้อมูลจากไฟล์นี้", use_container_width=True, type="primary"):
-                    st.session_state.form51_data = df_backup
-                    save_roster_to_local(df_backup)
-                    st.success("✅ กู้คืนข้อมูลสำเร็จ! กรุณากดรีเฟรชหน้าเว็บ (F5) 1 ครั้งเพื่อแสดงข้อมูลที่กู้คืนมา")
+                c_btn1, c_btn2 = st.columns(2)
+                
+                with c_btn1:
+                    if st.button("✨ กู้คืน (ทำเดือนเดิมต่อ)", use_container_width=True, type="primary"):
+                        st.session_state.form51_data = df_backup
+                        save_roster_to_local(df_backup)
+                        st.success("✅ กู้คืนข้อมูลสำเร็จ! กรุณากดรีเฟรชหน้าเว็บ (F5) 1 ครั้ง")
+                        
+                with c_btn2:
+                    if st.button("⏭️ ยกยอด (เริ่มเดือนใหม่)", use_container_width=True, type="secondary"):
+                        # สร้างตารางเปล่าๆ ตามจำนวนวันของเดือนใหม่
+                        new_df = pd.DataFrame(columns=columns_list)
+                        
+                        # 1. ดูดชื่อและเลขประจำตัวมาจากไฟล์เดิม
+                        new_df["ชื่อ-สกุล"] = df_backup["ชื่อ-สกุล"]
+                        new_df["เลขประจำตัว"] = df_backup["เลขประจำตัว"]
+                        new_df["อัตราวันละ"] = df_backup.get("อัตราวันละ", "")
+                        
+                        # 2. 🪄 เวทมนตร์ยกยอด: ย้าย 1-15 ด.ปัจจุบัน (C) ไปเป็น 1-15 ด.ก่อนหน้า (P)
+                        for i in range(1, 16):
+                            old_c = f"C{i}"
+                            new_p = f"P{i}"
+                            if old_c in df_backup.columns and new_p in new_df.columns:
+                                new_df[new_p] = df_backup[old_c]
+                                
+                        new_df = new_df.fillna("")
+                        st.session_state.form51_data = new_df
+                        save_roster_to_local(new_df)
+                        st.success("✅ ดึงข้อมูลวันที่ 1-15 มารอไว้ให้แล้ว! กรุณากดรีเฟรชหน้าเว็บ (F5) 1 ครั้งเพื่อเริ่มทำเดือนใหม่ได้เลย")
             else:
                 st.warning("⚠️ ไฟล์นี้ไม่ใช่ไฟล์ Backup แบบฟอร์ม 51 ครับ")
         except Exception as e:
