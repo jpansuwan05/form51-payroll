@@ -77,27 +77,27 @@ with st.container(border=True):
         edate_contract = st.text_input("วันสิ้นสุดสัญญา [EDATE_CONTRACT]", value="")
 
 # ==========================================
-# 4. เตรียมคอลัมน์ตารางหน้าเว็บ
+# 4. เตรียมคอลัมน์ตารางหน้าเว็บ (อัปเดตระบบพิมพ์เร็ว)
 # ==========================================
-# เพิ่ม 2 คอลัมน์ใหม่ เข้ามาจัดการใน UI ด้วย
+# ล็อค 3 คอลัมน์แรกให้อยู่ติดขอบซ้ายเสมอ
 config = {
-    "ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium"),
-    "เลขประจำตัว": st.column_config.TextColumn("เลขประจำตัว", width="small"),
-    "อัตราวันละ": st.column_config.NumberColumn("อัตราวันละ", width="small")
+    "ชื่อ-สกุล": st.column_config.TextColumn("ชื่อ-สกุล", width="medium", pinned=True),
+    "เลขประจำตัว": st.column_config.TextColumn("เลขประจำตัว", width="small", pinned=True),
+    "อัตราวันละ": st.column_config.NumberColumn("อัตราวันละ", width="small", pinned=True)
 }
 
-# เอา 2 คอลัมน์ใหม่มาแทรกไว้หน้าสุด
 columns_list = ["ชื่อ-สกุล", "เลขประจำตัว", "อัตราวันละ"]
 
+# เปลี่ยนคอลัมน์วันที่ให้เป็น TextColumn แทน SelectboxColumn เพื่อให้คีย์บอร์ดเลื่อนเร็วได้
 prev_cols = [f"P{d}" for d in range(1, num_days_prev + 1)]
 for d, col in enumerate(prev_cols, 1):
     columns_list.append(col)
-    config[col] = st.column_config.SelectboxColumn(f"{d} {prev_month_name[:3]}.", options=shift_codes, width="small")
+    config[col] = st.column_config.TextColumn(f"{d} {prev_month_name[:3]}.", width="small")
 
 curr_cols = [f"C{d}" for d in range(1, 16)]
 for d, col in enumerate(curr_cols, 1):
     columns_list.append(col)
-    config[col] = st.column_config.SelectboxColumn(f"{d} {target_month_name[:3]}.", options=shift_codes, width="small")
+    config[col] = st.column_config.TextColumn(f"{d} {target_month_name[:3]}.", width="small")
 
 # ==========================================
 # 5. โหลดข้อมูล (จากไฟล์อัปโหลด หรือ LocalStorage)
@@ -172,6 +172,15 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
     if edited_df.empty or edited_df["ชื่อ-สกุล"].isnull().all():
         st.warning("กรุณากรอกชื่อพนักงานอย่างน้อย 1 คน")
     else:
+        # ========================================================
+        # 🛠️ ระบบจัดเรียงข้อมูลใหม่ตาม "เลขประจำตัว" (น้อยไปมาก)
+        # ========================================================
+        sort_df = edited_df.copy()
+        # สร้างคอลัมน์จำลองเพื่อแปลงเลขประจำตัวเป็นตัวเลข (ป้องกันปัญหา 10 มาก่อน 2)
+        sort_df['sort_key'] = pd.to_numeric(sort_df['เลขประจำตัว'], errors='coerce')
+        # สั่งเรียงลำดับจากน้อยไปมาก (คนที่ไม่มีเลขประจำตัวจะถูกดันไปไว้ล่างสุด)
+        sort_df = sort_df.sort_values(by='sort_key', ascending=True, na_position='last').drop(columns=['sort_key'])
+        
         work_data = []    
         holiday_data = [] 
 
@@ -188,7 +197,8 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             if v == "2ย": return "2/ย"  
             return "" 
         
-        for idx, row in edited_df.iterrows():
+        # 🔄 เปลี่ยนมาวนลูปอ่านข้อมูลจากตารางที่จัดเรียงแล้ว (sort_df)
+        for idx, row in sort_df.iterrows():
             name = str(row.get("ชื่อ-สกุล", "")).strip()
             if not name or name == "nan": continue
             
@@ -213,7 +223,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             count_sick = working_range.count("ป")
             
             row_work = {
-                "ที่": len(work_data) + 1, 
+                "ที่": len(work_data) + 1,  # ลำดับที่ จะรันใหม่ 1, 2, 3... ตามที่เรียงสวยๆ แล้ว
                 "ชื่อ-นามสกุล": name,
                 "เลขประจำตัว": emp_id,
                 "อัตราวันละ": emp_rate
@@ -240,7 +250,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             val_7 = count_2y * 2
             
             row_holiday = {
-                "ที่": len(holiday_data) + 1, 
+                "ที่": len(holiday_data) + 1, # ลำดับที่ รันใหม่เช่นเดียวกัน
                 "ชื่อ-นามสกุล": name,
                 "เลขประจำตัว": emp_id,
                 "อัตราวันละ": emp_rate
@@ -260,11 +270,12 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         # ==========================================
         # 🖨️ สร้างไฟล์ Excel ลงฟอร์มต้นแบบ
         # ==========================================
+        import openpyxl
         output = io.BytesIO()
         try:
             wb = openpyxl.load_workbook("template_51.xlsx")
-            ws_work_template = wb["ค่าทำงาน"]  
-            ws_holiday_template = wb["วันหยุด"] 
+            ws_work_template = wb["แบบค่าทำงาน"]  
+            ws_holiday_template = wb["แบบวันหยุด"] 
 
             def replace_tags_in_sheet(ws, page_num):
                 replacements = {
@@ -298,11 +309,10 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                 start_row = 6 
                 for i, person_data in enumerate(chunk):
                     current_row = start_row + i
-                    # 📌 หยอดข้อมูลพนักงาน
                     ws.cell(row=current_row, column=1).value = person_data["ที่"]
                     ws.cell(row=current_row, column=2).value = person_data["ชื่อ-นามสกุล"]
-                    ws.cell(row=current_row, column=3).value = person_data["เลขประจำตัว"] # คอลัมน์ C
-                    ws.cell(row=current_row, column=4).value = person_data["อัตราวันละ"]  # คอลัมน์ D
+                    ws.cell(row=current_row, column=3).value = person_data["เลขประจำตัว"] 
+                    ws.cell(row=current_row, column=4).value = person_data["อัตราวันละ"]  
                     
                     for d in range(1, 32):
                         col_idx = 4 + d  
@@ -327,26 +337,25 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                 start_row = 6 
                 for i, person_data in enumerate(chunk):
                     current_row = start_row + i
-                    # 📌 หยอดข้อมูลพนักงาน
                     ws.cell(row=current_row, column=1).value = person_data["ที่"]
                     ws.cell(row=current_row, column=2).value = person_data["ชื่อ-นามสกุล"]
-                    ws.cell(row=current_row, column=3).value = person_data["เลขประจำตัว"] # คอลัมน์ C
-                    ws.cell(row=current_row, column=4).value = person_data["อัตราวันละ"]  # คอลัมน์ D
+                    ws.cell(row=current_row, column=3).value = person_data["เลขประจำตัว"] 
+                    ws.cell(row=current_row, column=4).value = person_data["อัตราวันละ"]  
                     
                     for d in range(1, 32):
                         col_idx = 4 + d 
                         ws.cell(row=current_row, column=col_idx).value = person_data.get(str(d), "")
                         
                     ws.cell(row=current_row, column=37).value = person_data["พรบ."] 
-                    ws.cell(row=current_row, column=43).value = person_data[".6 (2/น)"] # คอลัมน์ AQ
-                    ws.cell(row=current_row, column=45).value = person_data[".7 (2/ย)"] # คอลัมน์ AS
+                    ws.cell(row=current_row, column=43).value = person_data[".6 (2/น)"] 
+                    ws.cell(row=current_row, column=45).value = person_data[".7 (2/ย)"] 
 
             wb.remove(ws_work_template)
             wb.remove(ws_holiday_template)
             wb.save(output)
             output.seek(0)
             
-            st.success(f"✅ คำนวณเสร็จสมบูรณ์!")
+            st.success(f"✅ คำนวณเสร็จสมบูรณ์! และจัดเรียงรายชื่อตาม 'เลขประจำตัว' จากน้อยไปมากให้เรียบร้อยแล้ว!")
             st.download_button(
                 label="📥 ดาวน์โหลดไฟล์ฟอร์ม 51 (พร้อมปริ้นท์)",
                 data=output,
