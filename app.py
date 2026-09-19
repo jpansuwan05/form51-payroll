@@ -62,15 +62,18 @@ with st.container(border=True):
     _, num_days_prev = calendar.monthrange(prev_year_be - 543, prev_month_idx)
 
     st.markdown("---")
-    st.markdown("##### 📝 ข้อมูลสัญญาจ้าง (โปรแกรมจะนำไปแทนที่ตัวแปรในฟอร์ม)")
+    st.markdown("##### 📝 ข้อมูลตัวแปร (โปรแกรมจะนำไปแทนที่ตัวแปรในฟอร์มแบบอัตโนมัติ)")
     
-    col_contract, col_date1 = st.columns(2)
+    # เพิ่มช่อง [DATE] กลับมาให้แล้วครับ
+    col_contract, col_doc_date = st.columns(2)
     with col_contract:
         contract_no = st.text_input("เลขที่สัญญา/คำสั่ง [CONTRACT]", value="")
+    with col_doc_date:
+        doc_date = st.text_input("วันที่เซ็นแบบฟอร์ม [DATE]", value="")
+        
+    col_date1, col_date2, col_date3 = st.columns(3)
     with col_date1:
         date_contract = st.text_input("วันที่ลงนามสัญญา [DATE_CONTRACT]", value="")
-        
-    col_date2, col_date3 = st.columns(2)
     with col_date2:
         sdate_contract = st.text_input("วันที่เริ่มสัญญา [SDATE_CONTRACT]", value="")
     with col_date3:
