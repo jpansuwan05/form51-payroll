@@ -161,12 +161,55 @@ with st.form("editor_form"):
         use_container_width=True,
         height=500
     )
-    submit_btn = st.form_submit_button("💾 บันทึกข้อมูลลงเครื่อง (LocalStorage)", type="secondary")
+    submit_btn = st.form_submit_button("💾 บันทึกข้อมูลลงเครื่องเบราว์เซอร์ (กดบ่อยๆ กันเหนียว)", type="secondary")
     if submit_btn:
         st.session_state.form51_data = edited_df
         save_roster_to_local(edited_df)
         st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
 
+# ==========================================
+# 🛡️ ระบบ Backup กันเหนียว (เซฟเป็นไฟล์ Excel)
+# ==========================================
+st.markdown("---")
+st.markdown("### 🛡️ ระบบสำรองข้อมูลฉุกเฉิน (ป้องกันเผลอปิดหน้าเว็บ)")
+c_back1, c_back2 = st.columns(2)
+
+with c_back1:
+    st.info("💡 **เซฟงานเก็บไว้:** ดาวน์โหลดข้อมูลที่กรอกค้างไว้เป็นไฟล์ Excel ลงเครื่อง")
+    
+    # สร้างไฟล์ Backup จากข้อมูลที่กำลังกรอกอยู่
+    backup_output = io.BytesIO()
+    with pd.ExcelWriter(backup_output, engine='xlsxwriter') as writer:
+        edited_df.to_excel(writer, index=False, sheet_name='Backup')
+    backup_output.seek(0)
+    
+    st.download_button(
+        label="📥 ดาวน์โหลดไฟล์ Backup (แบบร่าง)",
+        data=backup_output,
+        file_name=f"Backup_แบบร่าง_51_{target_month_name}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+
+with c_back2:
+    st.info("🔄 **กู้คืนงานเดิม:** อัปโหลดไฟล์ Backup (แบบร่าง) กลับเข้ามาทำต่อ")
+    uploaded_backup = st.file_uploader("📂 อัปโหลดไฟล์ Backup ของคุณที่นี่", type=["xlsx"], key="backup_upload")
+    if uploaded_backup is not None:
+        try:
+            df_backup = pd.read_excel(uploaded_backup)
+            # เช็คว่าเป็นไฟล์ Backup ของระบบเราจริงๆ
+            if "ชื่อ-สกุล" in df_backup.columns and "เลขประจำตัว" in df_backup.columns:
+                df_backup = df_backup.fillna("").astype(str)
+                df_backup = df_backup.replace("nan", "")
+                
+                if st.button("✨ กู้คืนข้อมูลจากไฟล์นี้", use_container_width=True, type="primary"):
+                    st.session_state.form51_data = df_backup
+                    save_roster_to_local(df_backup)
+                    st.success("✅ กู้คืนข้อมูลสำเร็จ! กรุณากดรีเฟรชหน้าเว็บ (F5) 1 ครั้งเพื่อแสดงข้อมูลที่กู้คืนมา")
+            else:
+                st.warning("⚠️ ไฟล์นี้ไม่ใช่ไฟล์ Backup แบบฟอร์ม 51 ครับ")
+        except Exception as e:
+            st.error(f"ไฟล์ Backup ไม่ถูกต้อง: {e}")
 # ==========================================
 # 7. ระบบคำนวณและ Export 
 # ==========================================
