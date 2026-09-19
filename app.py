@@ -63,9 +63,15 @@ with st.container(border=True):
 
     st.markdown("---")
     st.markdown("##### 📝 ข้อมูลสัญญาจ้าง (โปรแกรมจะนำไปแทนที่ตัวแปรในฟอร์ม)")
-    col_date1, col_date2, col_date3 = st.columns(3)
+    
+    # เพิ่มกล่องข้อความให้กรอกข้อมูลสัญญาจ้างแบบครบถ้วนตามที่คุณต้องการ
+    col_contract, col_date1 = st.columns(2)
+    with col_contract:
+        contract_no = st.text_input("เลขที่สัญญา/คำสั่ง [CONTRACT]", value="")
     with col_date1:
         date_contract = st.text_input("วันที่ลงนามสัญญา [DATE_CONTRACT]", value="")
+        
+    col_date2, col_date3 = st.columns(2)
     with col_date2:
         sdate_contract = st.text_input("วันที่เริ่มสัญญา [SDATE_CONTRACT]", value="")
     with col_date3:
@@ -225,9 +231,10 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             def replace_tags_in_sheet(ws, page_num):
                 replacements = {
                     "[MONTH]": f"{target_month_name} {target_year_be}",
-                    "[PMONTH]": str(prev_month_name),       # ดึงชื่อเดือนก่อนหน้ามาใส่
-                    "[N]": str(num_days_prev),              # 28, 29, 30, หรือ 31
-                    "[PAGE]": str(page_num),                # เลขหน้าอัตโนมัติ
+                    "[PMONTH]": str(prev_month_name),       
+                    "[N]": str(num_days_prev),              
+                    "[PAGE]": str(page_num),                
+                    "[CONTRACT]": str(contract_no),         # <-- เพิ่มบรรทัดนี้
                     "[DATE_CONTRACT]": str(date_contract),
                     "[SDATE_CONTRACT]": str(sdate_contract),
                     "[EDATE_CONTRACT]": str(edate_contract)
