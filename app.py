@@ -287,6 +287,7 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
                     "[N]": str(num_days_prev),              
                     "[PAGE]": str(page_num),                
                     "[CONTRACT]": str(contract_no),
+                    "[DATE]": str(doc_date),                # <--- เพิ่ม [DATE] กลับเข้าสู่ระบบแล้ว!
                     "[DATE_CONTRACT]": str(date_contract),
                     "[SDATE_CONTRACT]": str(sdate_contract),
                     "[EDATE_CONTRACT]": str(edate_contract)
