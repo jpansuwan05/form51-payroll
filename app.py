@@ -90,14 +90,18 @@ config = {
 }
 
 columns_list = ["ชื่อ-สกุล", "เลขประจำตัว", "อัตราวันละ"]
+prev_cols = []
+curr_cols = []
 
 for d in range(1, num_days_prev + 1):
     col = f"P{d}"
+    prev_cols.append(col)
     columns_list.append(col)
     config[col] = st.column_config.TextColumn(f"{d} {prev_month_name[:3]}.", width="small")
 
 for d in range(1, 16):
     col = f"C{d}"
+    curr_cols.append(col)
     columns_list.append(col)
     config[col] = st.column_config.TextColumn(f"{d} {target_month_name[:3]}.", width="small")
 
