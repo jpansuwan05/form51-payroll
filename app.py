@@ -266,6 +266,8 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
         work_chunks = [work_data[i:i + chunk_size] for i in range(0, len(work_data), chunk_size)]
         holiday_chunks = [holiday_data[i:i + chunk_size] for i in range(0, len(holiday_data), chunk_size)]
 
+        # ... (โค้ดก่อนหน้านี้คือส่วน chunk_size = 13) ...
+
         output = io.BytesIO()
         try:
             wb = openpyxl.load_workbook("template_51.xlsx")
@@ -344,14 +346,35 @@ if st.button("📊 คำนวณและส่งออกไฟล์ Excel 
             wb.remove(ws_holiday_template)
             wb.save(output)
             output.seek(0)
+
+            # ==========================================================
+            # 🎯 แอบสร้างไฟล์ Backup ไปพร้อมๆ กันเลยในจังหวะนี้
+            # ==========================================================
+            backup_output_auto = io.BytesIO()
+            with pd.ExcelWriter(backup_output_auto, engine='xlsxwriter') as writer:
+                edited_df.to_excel(writer, index=False, sheet_name='Backup')
+            backup_output_auto.seek(0)
             
-            st.success(f"✅ คำนวณและดึงข้อมูลลงฟอร์ม 51 เรียบร้อยแล้ว!")
-            st.download_button(
-                label="📥 ดาวน์โหลดไฟล์ฟอร์ม 51 (พร้อมปริ้นท์)",
-                data=output,
-                file_name=f"ฟอร์ม51_{target_month_name}_{target_year_be}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            st.success(f"✅ คำนวณเสร็จสมบูรณ์! ระบบได้เตรียมไฟล์เอกสารและไฟล์ Backup ไว้ให้แล้วครับ")
+            
+            # โชว์ปุ่มดาวน์โหลด 2 ปุ่มคู่กัน
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    label="🖨️ ดาวน์โหลดไฟล์ฟอร์ม 51 (ส่งการเงิน)",
+                    data=output,
+                    file_name=f"ฟอร์ม51_{target_month_name}_{target_year_be}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with col_dl2:
+                st.download_button(
+                    label="💾 ดาวน์โหลดไฟล์ Backup (เก็บไว้ยกยอดเดือนหน้า)",
+                    data=backup_output_auto,
+                    file_name=f"Backup_แบบ51_{target_month_name}_{target_year_be}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
         except Exception as e:
             st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์ต้นแบบ: {e}")
