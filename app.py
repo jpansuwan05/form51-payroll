@@ -115,16 +115,20 @@ if 'loaded_from_ls' not in st.session_state:
 
 if saved_roster_json and not st.session_state.loaded_from_ls:
     try:
-        st.session_state.form51_data = pd.read_json(io.StringIO(saved_roster_json), orient='records')
+        # 🛠️ เช็คชนิดข้อมูล ถ้าระบบส่งมาเป็น List ก็แปลงเป็นตารางได้เลย
+        if isinstance(saved_roster_json, str):
+            st.session_state.form51_data = pd.read_json(io.StringIO(saved_roster_json), orient='records')
+        elif isinstance(saved_roster_json, list):
+            st.session_state.form51_data = pd.DataFrame(saved_roster_json)
+        
         st.session_state.loaded_from_ls = True
-    except:
+    except Exception as e:
         pass
 
 if 'form51_data' not in st.session_state:
     st.session_state.form51_data = pd.DataFrame(columns=columns_list)
 
 if uploaded_db is not None:
-    # 🛡️ เช็คว่าไฟล์ฐานข้อมูลนี้เคยถูกโหลดไปแล้วหรือยัง ป้องกันการดึงข้อมูลมาทับเวลายกยอด
     db_hash = f"{uploaded_db.name}_{uploaded_db.size}"
     if st.session_state.get('loaded_db_hash') != db_hash:
         try:
@@ -143,8 +147,6 @@ if uploaded_db is not None:
                 
                 st.session_state.form51_data = new_df
                 st.session_state.editor_key += 1  
-                
-                # 🎯 บันทึกไว้ว่าไฟล์นี้โหลดเสร็จแล้ว ห้ามโหลดซ้ำอีกจนกว่าจะเปลี่ยนไฟล์
                 st.session_state.loaded_db_hash = db_hash 
                 
                 save_roster_to_local(new_df)
@@ -170,7 +172,6 @@ with st.form("editor_form"):
         height=500
     )
     
-    # เปลี่ยนมาใช้ปุ่ม 2 ปุ่มคู่กัน (เซฟ และ โหลด)
     c_btn_save1, c_btn_save2 = st.columns(2)
     with c_btn_save1:
         submit_btn = st.form_submit_button("💾 1. บันทึกข้อมูลลงเครื่องเบราว์เซอร์ (กันเหนียว)", type="primary")
@@ -180,14 +181,21 @@ with st.form("editor_form"):
             st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
             
     with c_btn_save2:
-        # สร้างปุ่มสำหรับดึงข้อมูลกลับมาเวลาเผลอกด F5
         load_btn = st.form_submit_button("🔄 2. กู้คืนข้อมูลจากเบราว์เซอร์ (ใช้เมื่อเผลอกด F5 แล้วตารางหาย)")
         if load_btn:
             saved_json = local_storage.getItem("srt_form51_data")
             if saved_json:
-                st.session_state.form51_data = pd.read_json(io.StringIO(saved_json), orient='records')
-                st.session_state.editor_key += 1
-                st.rerun() # รีเฟรชเพื่อแสดงผลตารางที่กู้มา
+                try:
+                    # 🛠️ ดักจับชนิดข้อมูลเพื่อป้องกัน TypeError 
+                    if isinstance(saved_json, str):
+                        st.session_state.form51_data = pd.read_json(io.StringIO(saved_json), orient='records')
+                    elif isinstance(saved_json, list):
+                        st.session_state.form51_data = pd.DataFrame(saved_json)
+                        
+                    st.session_state.editor_key += 1
+                    st.rerun() 
+                except Exception as e:
+                    st.error(f"กู้คืนข้อมูลไม่สำเร็จ: {e}")
             else:
                 st.warning("ไม่พบข้อมูลที่บันทึกไว้ในเบราว์เซอร์ครับ")
 
