@@ -163,17 +163,33 @@ st.markdown("### ✍️ 2. ตารางกรอกข้อมูลลง�
 with st.form("editor_form"):
     edited_df = st.data_editor(
         st.session_state.form51_data,
-        key=f"data_editor_{st.session_state.editor_key}", # 🎯 กุญแจสำคัญที่ทำให้ตารางอัปเดต!
+        key=f"data_editor_{st.session_state.editor_key}", 
         num_rows="dynamic",
         column_config=config,
         use_container_width=True,
         height=500
     )
-    submit_btn = st.form_submit_button("💾 บันทึกข้อมูลลงเครื่องเบราว์เซอร์ (กันเหนียว)", type="secondary")
-    if submit_btn:
-        st.session_state.form51_data = edited_df
-        save_roster_to_local(edited_df)
-        st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
+    
+    # เปลี่ยนมาใช้ปุ่ม 2 ปุ่มคู่กัน (เซฟ และ โหลด)
+    c_btn_save1, c_btn_save2 = st.columns(2)
+    with c_btn_save1:
+        submit_btn = st.form_submit_button("💾 1. บันทึกข้อมูลลงเครื่องเบราว์เซอร์ (กันเหนียว)", type="primary")
+        if submit_btn:
+            st.session_state.form51_data = edited_df
+            save_roster_to_local(edited_df)
+            st.success("บันทึกข้อมูลไว้ในเบราว์เซอร์เรียบร้อยแล้ว!")
+            
+    with c_btn_save2:
+        # สร้างปุ่มสำหรับดึงข้อมูลกลับมาเวลาเผลอกด F5
+        load_btn = st.form_submit_button("🔄 2. กู้คืนข้อมูลจากเบราว์เซอร์ (ใช้เมื่อเผลอกด F5 แล้วตารางหาย)")
+        if load_btn:
+            saved_json = local_storage.getItem("srt_form51_data")
+            if saved_json:
+                st.session_state.form51_data = pd.read_json(io.StringIO(saved_json), orient='records')
+                st.session_state.editor_key += 1
+                st.rerun() # รีเฟรชเพื่อแสดงผลตารางที่กู้มา
+            else:
+                st.warning("ไม่พบข้อมูลที่บันทึกไว้ในเบราว์เซอร์ครับ")
 
 # ==========================================
 # 7. ระบบคำนวณและ Export 
